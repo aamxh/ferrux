@@ -1,6 +1,5 @@
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
+    io::{copy_bidirectional}, net::{TcpListener, TcpStream},
 };
 
 #[tokio::main]
@@ -9,23 +8,21 @@ async fn main() {
     println!("Server listening on 127.0.0.1:8080");
 
     loop {
-        let (mut socket, addr) = listener.accept().await.unwrap();
-        tokio::spawn(async move {
-            println!("Accepted connection from {}", addr);
+        let (socket, addr) = listener.accept().await.unwrap();
+        tokio::spawn(process(socket, addr));
+    }
+}
 
-            let mut buf = [0u8; 1024];
-            loop {
-
-                // receiving bytes
-                let n = socket.read(&mut buf).await.unwrap();
-                if n == 0 {
-                    break; // connection closed
-                }
-                println!("Received {} bytes from {}", n, addr);
-
-                // sending bytes back 
-                socket.write_all(&buf[..n]).await.unwrap();
-            }
-        });
+async fn process(mut socket: TcpStream, addr: core::net::SocketAddr) {
+    println!("Accepted connection from {}", addr);
+    let mut upstream = match TcpStream::connect("127.0.0.1:9000").await {
+        Ok(stream) => stream,
+        Err(err) => {
+            eprintln!("Failed to connect to upstream: {}", err);
+            return;
+        }
+    };
+    if let Err(e) = copy_bidirectional(&mut socket, &mut upstream).await {
+        eprintln!("Proxy error: {}", e);
     }
 }
