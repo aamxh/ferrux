@@ -23,7 +23,7 @@ No tests, lints, or CI configured yet.
 - [x] Milestone 1: Dumb TCP proxy (tokio::io::copy_bidirectional)
 - [x] Milestone 2: Multiple backends + round robin
 - [x] Milestone 3: Health checks
-- [ ] Milestone 4: Config file support
+- [x] Milestone 4: Config file support
 - [ ] Milestone 5: Buffer pool
 - [ ] Milestone 6: L7 HTTP routing
 

@@ -8,6 +8,19 @@ use tokio::{
     net::{TcpListener, TcpStream},
     sync::{RwLock},
 };
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct Config {
+    backends: Vec<ServerConfig>,
+    listen: ServerConfig,
+}
+
+#[derive(Debug, Deserialize)]
+struct ServerConfig {
+    address: String,
+    port: u16,
+}
 
 #[derive(Debug, Clone)]
 struct Backend {
@@ -19,14 +32,14 @@ type BackendPool = Arc<RwLock<Vec<Backend>>>;
 
 #[tokio::main]
 async fn main() {
-    let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
-    println!("Server listening on 127.0.0.1:8080");
+    let config_content = tokio::fs::read_to_string("config.yaml").await.unwrap();
+    let config: Config = serde_yaml::from_str(&config_content).unwrap();
 
-    let backend_pool: BackendPool = Arc::new(RwLock::new(vec![
-        Backend { addr: "127.0.0.1:9001".parse().unwrap(), healthy: Arc::new(AtomicBool::new(true)) },
-        Backend { addr: "127.0.0.1:9002".parse().unwrap(), healthy: Arc::new(AtomicBool::new(true))   },
-        Backend { addr: "127.0.0.1:9003".parse().unwrap(), healthy: Arc::new(AtomicBool::new(true)) },
-    ]));
+    let listen_addr = load_listen_addr(&config);
+    let listener = TcpListener::bind(listen_addr).await.unwrap();
+    println!("Server listening on {}", listen_addr);
+
+    let backend_pool: BackendPool = Arc::new(RwLock::new(load_backends(&config)));
     let counter = Arc::new(AtomicUsize::new(0));
 
     spawn_health_checker(backend_pool.clone());
@@ -45,6 +58,20 @@ async fn main() {
             }
         });
     }
+}
+
+fn load_listen_addr(config: &Config) -> SocketAddr {
+    format!("{}:{}", config.listen.address, config.listen.port).parse().unwrap()
+}
+
+fn load_backends(config: &Config) -> Vec<Backend> {
+    config.backends.iter().map(|server| {
+        let addr = format!("{}:{}", server.address, server.port).parse().unwrap();
+        Backend {
+            addr,
+            healthy: Arc::new(AtomicBool::new(true)), // Assume healthy initially
+        }
+    }).collect()
 }
 
 fn spawn_health_checker(pool: BackendPool) {
