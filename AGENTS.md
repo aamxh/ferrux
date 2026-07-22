@@ -21,7 +21,7 @@ No tests, lints, or CI configured yet.
 
 - [x] Milestone 0: TCP echo server
 - [x] Milestone 1: Dumb TCP proxy (tokio::io::copy_bidirectional)
-- [ ] Milestone 2: Multiple backends + round robin
+- [x] Milestone 2: Multiple backends + round robin
 - [ ] Milestone 3: Health checks
 - [ ] Milestone 4: Config file support
 - [ ] Milestone 5: Buffer pool
