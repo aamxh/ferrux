@@ -2,6 +2,11 @@
 name = "ferrux"
 version = "0.1.0"
 edition = "2024"
+description = "Async reverse proxy built on tokio with L7 HTTP routing, health checks, and weighted load balancing"
+license = "MIT"
+repository = "https://github.com/aamxh/ferrux"
+keywords = ["proxy", "load-balancer", "tokio", "async", "http"]
+categories = ["network-programming", "asynchronous"]
 
 [dependencies]
 bytes = "1.12.1"

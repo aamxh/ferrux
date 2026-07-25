@@ -1,33 +1,42 @@
-# ferrux
+# Ferrux
 
-Async reverse proxy built on tokio. Learning project following a milestone-based approach.
+Async reverse proxy built on tokio. Published as a library crate with a binary server entry point.
 
 ## Build & Run
 
 ```sh
-cargo build
-cargo run                    # starts server on 127.0.0.1:8080
-cargo run --example client   # connect to running server
+cargo build                        # build library + binary
+cargo run --bin server              # starts server (reads config.yaml)
+cargo run --example client          # connect to running server
+cargo build --release               # optimized build
 ```
 
 No tests, lints, or CI configured yet.
 
 ## Structure
 
-- `src/main.rs` — entry point
-- `examples/client.rs` — example client
+```
+src/
+  lib.rs            — library crate: public types, proxy logic, health checks
+  config.rs         — Config, BackendServerConfig, Backend structs
+  error.rs          — HttpError enum with HTTP response mappings
+  bin/
+    server.rs       — binary entry point (reads config, runs accept loop)
+examples/
+  client.rs         — example TCP client
+```
 
-## Progress
+## Publishing
 
-- [x] Milestone 0: TCP echo server
-- [x] Milestone 1: Dumb TCP proxy (tokio::io::copy_bidirectional)
-- [x] Milestone 2: Multiple backends + round robin
-- [x] Milestone 3: Health checks
-- [x] Milestone 4: Config file support
-- [x] Milestone 5: Buffer pool
-- [x] Milestone 6: L7 HTTP routing
+```sh
+cargo login <token>
+cargo publish --dry-run    # verify before publishing
+cargo publish
+```
+
+Update `repository` in `Cargo.toml` before publishing.
 
 ## Notes
 
 - Rust edition 2024.
-- Dependencies: `tokio` (full features), `bytes`.
+- Dependencies: `tokio` (full features), `bytes`, `serde`, `serde_yaml`, `httparse`.

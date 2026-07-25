@@ -1,93 +1,36 @@
+pub mod config;
+pub mod error;
+
+pub use config::{Backend, BackendServerConfig, Config, ListenServerConfig};
+pub use error::HttpError;
+
 use bytes::BytesMut;
 use std::{
-    net::SocketAddr, sync::{
+    net::SocketAddr,
+    sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
-    }, time::Duration,
+    },
+    time::Duration,
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
+    net::TcpStream,
     sync::RwLock,
 };
 
-mod config;
-mod error;
-use config::{Backend, Config};
-use error::HttpError;
-
 const MAX_HEADER_SIZE: usize = 8192;
 
-type BackendPool = Arc<RwLock<Vec<Backend>>>;
-type BufferPool = Arc<Mutex<Vec<BytesMut>>>;
+pub type BackendPool = Arc<RwLock<Vec<Backend>>>;
+pub type BufferPool = Arc<Mutex<Vec<BytesMut>>>;
 
-#[tokio::main]
-async fn main() {
-    let config_content = tokio::fs::read_to_string("config.yaml").await.unwrap();
-    let config: Config = serde_yaml::from_str(&config_content).unwrap();
-
-    let listen_addr = get_addr_from_config(&config.listen.address, config.listen.port);
-    let listener = TcpListener::bind(listen_addr).await.unwrap();
-    println!("Server listening on {}", listen_addr);
-
-    let backends_pool: BackendPool = Arc::new(RwLock::new(load_backends(&config)));
-    let count = config.buffer_pool_size.unwrap_or(20);
-    let buf_size = config.buffer_size.unwrap_or(8192);
-    let counter = Arc::new(AtomicUsize::new(0));
-    let buffers_pool: BufferPool = Arc::new(Mutex::new(
-        (0..count)
-            .map(|_| BytesMut::with_capacity(buf_size))
-            .collect(),
-    ));
-
-    spawn_health_checker(backends_pool.clone());
-
-    loop {
-        let (mut socket, addr) = listener.accept().await.unwrap();
-        println!("Accepted connection from {}", addr);
-        let counter = counter.clone();
-        let backends_pool = backends_pool.clone();
-        let buffers_pool = buffers_pool.clone();
-        let mode = config.mode.clone();
-        tokio::spawn(async move {
-            let result = get_valid_backends(&mode, backends_pool, &mut socket).await;
-            match result {
-                Ok((backends, initial_data)) => {
-                    let backend = pick_backend(backends, counter.clone());
-                    let addr = get_addr_from_config(&backend.server.address, backend.server.port);
-                    let (buf1, buf2) = {
-                        let mut pool = buffers_pool.lock().unwrap();
-                        (
-                            pool.pop()
-                                .unwrap_or_else(|| BytesMut::with_capacity(buf_size)),
-                            pool.pop()
-                                .unwrap_or_else(|| BytesMut::with_capacity(buf_size)),
-                        )
-                    };
-                    let (processed_buf1, processed_buf2) =
-                        process(socket, addr, initial_data, buf1, buf2).await;
-                    {
-                        let mut pool = buffers_pool.lock().unwrap();
-                        pool.push(processed_buf1);
-                        pool.push(processed_buf2);
-                    }
-                }
-                Err(error) => {
-                    eprintln!("Error processing request from {}: {:?}", addr, error);
-                    let _ = socket.write_all(error.response()).await;
-                }
-            }
-        });
-    }
-}
-
-fn get_addr_from_config(address: &str, port: u16) -> SocketAddr {
+pub fn get_addr_from_config(address: &str, port: u16) -> SocketAddr {
     format!("{}:{}", address, port)
         .parse()
         .unwrap()
 }
 
-fn load_backends(config: &Config) -> Vec<Backend> {
+pub fn load_backends(config: &Config) -> Vec<Backend> {
     config
         .backends
         .iter()
@@ -98,7 +41,7 @@ fn load_backends(config: &Config) -> Vec<Backend> {
         .collect()
 }
 
-fn spawn_health_checker(pool: BackendPool) {
+pub fn spawn_health_checker(pool: BackendPool) {
     tokio::spawn(async move {
         loop {
             let backends = pool.read().await.clone();
@@ -112,17 +55,25 @@ fn spawn_health_checker(pool: BackendPool) {
     });
 }
 
-async fn check_health(addr: SocketAddr) -> bool {
+pub async fn check_health(addr: SocketAddr) -> bool {
     match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(addr)).await {
         Ok(Ok(_)) => true,
         _ => false,
     }
 }
 
-async fn get_valid_backends(mode: &str, backends_pool: Arc<RwLock<Vec<Backend>>>, socket: &mut TcpStream) -> Result<(Vec<Backend>, Vec<u8>), HttpError> {
+pub async fn get_valid_backends(
+    mode: &str,
+    backends_pool: Arc<RwLock<Vec<Backend>>>,
+    socket: &mut TcpStream,
+) -> Result<(Vec<Backend>, Vec<u8>), HttpError> {
     let healthy_backends: Vec<_> = {
         let backends = backends_pool.read().await;
-        backends.iter().cloned().filter(|b| b.healthy.load(Ordering::Relaxed)).collect()
+        backends
+            .iter()
+            .cloned()
+            .filter(|b| b.healthy.load(Ordering::Relaxed))
+            .collect()
     };
     if healthy_backends.is_empty() {
         return Err(HttpError::ServiceUnavailable);
@@ -131,7 +82,7 @@ async fn get_valid_backends(mode: &str, backends_pool: Arc<RwLock<Vec<Backend>>>
     if mode == "l4" {
         return Ok((healthy_backends, Vec::new()));
     }
-    
+
     let mut buffer = Vec::new();
     let mut valid_backends: Vec<Backend> = Vec::new();
     let result = tokio::time::timeout(Duration::from_secs(5), async {
@@ -182,7 +133,8 @@ async fn get_valid_backends(mode: &str, backends_pool: Arc<RwLock<Vec<Backend>>>
                 httparse::Status::Partial => continue,
             }
         }
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(backends)) => Ok((backends, buffer)),
@@ -191,7 +143,7 @@ async fn get_valid_backends(mode: &str, backends_pool: Arc<RwLock<Vec<Backend>>>
     }
 }
 
-fn pick_backend(backends: Vec<Backend>, counter: Arc<AtomicUsize>) -> Backend {
+pub fn pick_backend(backends: Vec<Backend>, counter: Arc<AtomicUsize>) -> Backend {
     let total_weight: usize = backends.iter().map(|b| b.server.weight).sum();
     let index = counter.fetch_add(1, Ordering::Relaxed) % total_weight;
 
@@ -205,7 +157,7 @@ fn pick_backend(backends: Vec<Backend>, counter: Arc<AtomicUsize>) -> Backend {
     backends[0].clone()
 }
 
-async fn process(
+pub async fn process(
     mut socket: TcpStream,
     addr: SocketAddr,
     initial_data: Vec<u8>,
@@ -262,5 +214,5 @@ async fn process(
             }
         }
     }
-    return (buf1, buf2);
+    (buf1, buf2)
 }
