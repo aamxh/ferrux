@@ -25,7 +25,7 @@ No tests, lints, or CI configured yet.
 - [x] Milestone 3: Health checks
 - [x] Milestone 4: Config file support
 - [x] Milestone 5: Buffer pool
-- [ ] Milestone 6: L7 HTTP routing
+- [x] Milestone 6: L7 HTTP routing
 
 ## Notes
 

@@ -2,18 +2,15 @@
 mode: "l7"
 
 backends:
-  - name: "backend1"
-    address: "127.0.0.1"
+  - address: "127.0.0.1"
     port: 9001
     weight: 1
     path: "/api"
-  - name: "backend2"
-    address: "127.0.0.1"
+  - address: "127.0.0.1"
     port: 9002
     weight: 1
     path: "/static"
-  - name: "backend3"
-    address: "127.0.0.1"
+  - address: "127.0.0.1"
     port: 9003
     weight: 2
     path: "/api"

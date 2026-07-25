@@ -1,12 +1,9 @@
 use bytes::BytesMut;
-use serde::Deserialize;
 use std::{
-    net::SocketAddr,
-    sync::{
+    net::SocketAddr, sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
-    }, 
-    time::Duration,
+    }, time::Duration,
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -14,40 +11,12 @@ use tokio::{
     sync::RwLock,
 };
 
-#[derive(Debug, Deserialize)]
-struct Config {
-    mode: String,
-    backends: Vec<BackendServerConfig>,
-    listen: ListenServerConfig,
-    buffer_pool_size: Option<usize>,
-    buffer_size: Option<usize>,
-}
+mod config;
+mod error;
+use config::{Backend, Config};
+use error::HttpError;
 
-#[derive(Debug, Deserialize)]
-struct ListenServerConfig {
-    address: String,
-    port: u16,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct BackendServerConfig {
-    name: Option<String>,
-    address: String,
-    port: u16,
-    path: Option<String>,
-    #[serde(default = "default_weight")]
-    weight: usize,
-}
-
-fn default_weight() -> usize {
-    1
-}
-
-#[derive(Debug, Clone)]
-struct Backend {
-    server: BackendServerConfig,
-    healthy: Arc<AtomicBool>,
-}
+const MAX_HEADER_SIZE: usize = 8192;
 
 type BackendPool = Arc<RwLock<Vec<Backend>>>;
 type BufferPool = Arc<Mutex<Vec<BytesMut>>>;
@@ -81,28 +50,32 @@ async fn main() {
         let buffers_pool = buffers_pool.clone();
         let mode = config.mode.clone();
         tokio::spawn(async move {
-            let backends = get_valid_backends(&mode, backends_pool, &mut socket).await;
-            if let Some(backends) = backends {
-                let backend = pick_backend(backends, counter.clone());
-                let addr = get_addr_from_config(&backend.server.address, backend.server.port);
-                let (buf1, buf2) = {
-                    let mut pool = buffers_pool.lock().unwrap();
-                    (
-                        pool.pop()
-                            .unwrap_or_else(|| BytesMut::with_capacity(buf_size)),
-                        pool.pop()
-                            .unwrap_or_else(|| BytesMut::with_capacity(buf_size)),
-                    )
-                };
-                let (processed_buf1, processed_buf2) =
-                    process(socket, addr, buf1, buf2).await;
-                {
-                    let mut pool = buffers_pool.lock().unwrap();
-                    pool.push(processed_buf1);
-                    pool.push(processed_buf2);
+            let result = get_valid_backends(&mode, backends_pool, &mut socket).await;
+            match result {
+                Ok((backends, initial_data)) => {
+                    let backend = pick_backend(backends, counter.clone());
+                    let addr = get_addr_from_config(&backend.server.address, backend.server.port);
+                    let (buf1, buf2) = {
+                        let mut pool = buffers_pool.lock().unwrap();
+                        (
+                            pool.pop()
+                                .unwrap_or_else(|| BytesMut::with_capacity(buf_size)),
+                            pool.pop()
+                                .unwrap_or_else(|| BytesMut::with_capacity(buf_size)),
+                        )
+                    };
+                    let (processed_buf1, processed_buf2) =
+                        process(socket, addr, initial_data, buf1, buf2).await;
+                    {
+                        let mut pool = buffers_pool.lock().unwrap();
+                        pool.push(processed_buf1);
+                        pool.push(processed_buf2);
+                    }
                 }
-            } else {
-                eprintln!("No healthy backends available for connection from {}", addr);
+                Err(error) => {
+                    eprintln!("Error processing request from {}: {:?}", addr, error);
+                    let _ = socket.write_all(error.response()).await;
+                }
             }
         });
     }
@@ -140,76 +113,82 @@ fn spawn_health_checker(pool: BackendPool) {
 }
 
 async fn check_health(addr: SocketAddr) -> bool {
-    match tokio::time::timeout(Duration::from_millis(500), TcpStream::connect(addr)).await {
+    match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(addr)).await {
         Ok(Ok(_)) => true,
         _ => false,
     }
 }
 
-async fn get_valid_backends(mode: &str, backends_pool: Arc<RwLock<Vec<Backend>>>, socket: &mut TcpStream) -> Option<Vec<Backend>> {
-    let backends = backends_pool.read().await;
-    let healthy_backends: Vec<_> = backends
-        .iter()
-        .cloned()
-        .filter(|b| b.healthy.load(Ordering::Relaxed))
-        .collect();
-
+async fn get_valid_backends(mode: &str, backends_pool: Arc<RwLock<Vec<Backend>>>, socket: &mut TcpStream) -> Result<(Vec<Backend>, Vec<u8>), HttpError> {
+    let healthy_backends: Vec<_> = {
+        let backends = backends_pool.read().await;
+        backends.iter().cloned().filter(|b| b.healthy.load(Ordering::Relaxed)).collect()
+    };
     if healthy_backends.is_empty() {
-        return None;
+        return Err(HttpError::ServiceUnavailable);
     }
 
     if mode == "l4" {
-        return Some(healthy_backends);
+        return Ok((healthy_backends, Vec::new()));
     }
     
     let mut buffer = Vec::new();
     let mut valid_backends: Vec<Backend> = Vec::new();
-    loop {
-        let n = socket.read_buf(&mut buffer).await.unwrap();
-
-        if n == 0 {
-            break;
-        }
-
-        let mut headers = [httparse::EMPTY_HEADER; 32];
-        let mut req = httparse::Request::new(&mut headers);
-
-        match req.parse(&buffer).unwrap() {
-            httparse::Status::Complete(body_start) => {
-                // Headers parsed
-
-                // Read Content-Length if present
-                let content_length = req
-                    .headers
-                    .iter()
-                    .find(|h| h.name.eq_ignore_ascii_case("Content-Length"))
-                    .and_then(|h| std::str::from_utf8(h.value).ok())
-                    .and_then(|s| s.parse::<usize>().ok())
-                    .unwrap_or(0);
-
-                // Wait until the whole body is available
-                if buffer.len() < body_start + content_length {
-                    continue;
-                }
-
-                // let body = &buffer[body_start..body_start + content_length];
-
-                let path = req.path.unwrap_or("/");
-                println!("Received request for path: {}", path);
-                
-                for backend in &healthy_backends {
-                    if path.starts_with(&backend.server.path.as_deref().unwrap_or("/")) {
-                        valid_backends.push(backend.clone());
-                    }
-                }
-
-                break;
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if buffer.len() > MAX_HEADER_SIZE {
+                eprintln!("Request headers too large!");
+                return Err(HttpError::HeaderTooLarge);
             }
 
-            httparse::Status::Partial => continue,
+            let n = socket.read_buf(&mut buffer).await.ok().unwrap_or(0);
+            if n == 0 {
+                return Err(HttpError::BadRequest);
+            }
+
+            let mut headers = [httparse::EMPTY_HEADER; 32];
+            let mut req = httparse::Request::new(&mut headers);
+
+            match req.parse(&buffer).ok().unwrap_or(httparse::Status::Partial) {
+                httparse::Status::Complete(body_start) => {
+                    let content_length = req
+                        .headers
+                        .iter()
+                        .find(|h| h.name.eq_ignore_ascii_case("Content-Length"))
+                        .and_then(|h| std::str::from_utf8(h.value).ok())
+                        .and_then(|s| s.parse::<usize>().ok())
+                        .unwrap_or(0);
+
+                    if buffer.len() < body_start + content_length {
+                        continue;
+                    }
+
+                    let path = req.path.unwrap_or("/");
+                    println!("Received request for path: {}", path);
+
+                    for backend in &healthy_backends {
+                        if path.starts_with(&backend.server.path.as_deref().unwrap_or("/")) {
+                            valid_backends.push(backend.clone());
+                        }
+                    }
+
+                    if valid_backends.is_empty() {
+                        println!("No valid backends found for path: {}", path);
+                        return Err(HttpError::NotFound);
+                    }
+
+                    return Ok(valid_backends);
+                }
+                httparse::Status::Partial => continue,
+            }
         }
+    }).await;
+
+    match result {
+        Ok(Ok(backends)) => Ok((backends, buffer)),
+        Ok(Err(e)) => Err(e),
+        Err(_) => Err(HttpError::BadRequest),
     }
-    Some(valid_backends)
 }
 
 fn pick_backend(backends: Vec<Backend>, counter: Arc<AtomicUsize>) -> Backend {
@@ -229,6 +208,7 @@ fn pick_backend(backends: Vec<Backend>, counter: Arc<AtomicUsize>) -> Backend {
 async fn process(
     mut socket: TcpStream,
     addr: SocketAddr,
+    initial_data: Vec<u8>,
     mut buf1: BytesMut,
     mut buf2: BytesMut,
 ) -> (BytesMut, BytesMut) {
@@ -237,9 +217,18 @@ async fn process(
         Ok(stream) => stream,
         Err(err) => {
             eprintln!("Failed to connect to upstream: {}", err);
+            socket.write_all(HttpError::Internal.response()).await.ok();
             return (buf1, buf2);
         }
     };
+
+    if !initial_data.is_empty() {
+        if upstream.write_all(&initial_data).await.is_err() {
+            eprintln!("Failed to send initial data to upstream");
+            socket.write_all(HttpError::Internal.response()).await.ok();
+            return (buf1, buf2);
+        }
+    }
 
     loop {
         buf1.clear();
@@ -265,7 +254,10 @@ async fn process(
                             break;
                         }
                     }
-                    Err(_) => break,
+                    Err(_) => {
+                        socket.write_all(HttpError::Internal.response()).await.ok();
+                        break;
+                    }
                 }
             }
         }
