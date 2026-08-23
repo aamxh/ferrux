@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use std::{
+    net::SocketAddr,
     sync::{atomic::AtomicBool, Arc},
 };
 
@@ -35,4 +36,21 @@ fn default_weight() -> usize {
 pub struct Backend {
     pub server: BackendServerConfig,
     pub healthy: Arc<AtomicBool>,
+}
+
+pub fn get_addr_from_config(address: &str, port: u16) -> SocketAddr {
+    format!("{}:{}", address, port)
+        .parse()
+        .unwrap()
+}
+
+pub fn load_backends(config: &Config) -> Vec<Backend> {
+    config
+        .backends
+        .iter()
+        .map(|backend| Backend {
+            server: backend.clone(),
+            healthy: Arc::new(AtomicBool::new(true)),
+        })
+        .collect()
 }

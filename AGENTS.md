@@ -17,9 +17,14 @@ No tests, lints, or CI configured yet.
 
 ```
 src/
-  lib.rs            — library crate: public types, proxy logic, health checks
-  config.rs         — Config, BackendServerConfig, Backend structs
+  lib.rs            — library crate root: module declarations + public API re-exports
+  config.rs         — Config, BackendServerConfig, Backend structs, config helpers
   error.rs          — HttpError enum with HTTP response mappings
+  router.rs         — L7 request parsing and path-based backend matching
+  balance.rs        — backend selection (weighted round-robin)
+  health.rs         — BackendPool type, background health checks
+  proxy.rs          — bidirectional TCP forwarding loop
+  buffer.rs         — BufferPool type alias
   bin/
     server.rs       — binary entry point (reads config, runs accept loop)
 examples/
