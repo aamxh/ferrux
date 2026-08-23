@@ -1,6 +1,6 @@
 use tokio::{
-    net::{TcpStream},
     io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
 };
 
 #[tokio::main]
@@ -15,5 +15,4 @@ async fn main() {
     let n = stream.read(&mut buffer).await.unwrap();
 
     println!("Received {} bytes", n);
-
 }

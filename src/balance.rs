@@ -1,5 +1,6 @@
 use std::sync::{
-    Arc, atomic::{AtomicUsize, Ordering},
+    Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 use crate::config::Backend;

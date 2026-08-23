@@ -1,8 +1,6 @@
 use std::{
     net::SocketAddr,
-    sync::{
-        Arc, atomic::Ordering,
-    },
+    sync::{Arc, atomic::Ordering},
     time::Duration,
 };
 use tokio::{net::TcpStream, sync::RwLock};
@@ -26,8 +24,8 @@ pub fn spawn_health_checker(pool: BackendPool) {
 }
 
 pub async fn check_health(addr: SocketAddr) -> bool {
-    match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(addr)).await {
-        Ok(Ok(_)) => true,
-        _ => false,
-    }
+    matches!(
+        tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(addr)).await,
+        Ok(Ok(_))
+    )
 }

@@ -1,14 +1,8 @@
 use std::{
-    sync::{
-        Arc, atomic::Ordering,
-    },
+    sync::{Arc, atomic::Ordering},
     time::Duration,
 };
-use tokio::{
-    io::AsyncReadExt,
-    net::TcpStream,
-    sync::RwLock,
-};
+use tokio::{io::AsyncReadExt, net::TcpStream, sync::RwLock};
 
 use crate::config::Backend;
 use crate::error::HttpError;
@@ -24,8 +18,8 @@ pub async fn get_valid_backends(
         let backends = backends_pool.read().await;
         backends
             .iter()
-            .cloned()
             .filter(|b| b.healthy.load(Ordering::Relaxed))
+            .cloned()
             .collect()
     };
     if healthy_backends.is_empty() {
@@ -71,7 +65,7 @@ pub async fn get_valid_backends(
                     println!("Received request for path: {}", path);
 
                     for backend in &healthy_backends {
-                        if path.starts_with(&backend.server.path.as_deref().unwrap_or("/")) {
+                        if path.starts_with(backend.server.path.as_deref().unwrap_or("/")) {
                             valid_backends.push(backend.clone());
                         }
                     }

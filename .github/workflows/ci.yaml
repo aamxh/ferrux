@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Daily at 06:00 UTC — catches newly published advisories between pushes
+    - cron: "0 6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fmt:
+    name: Check Code Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check Code Formatting
+        run: cargo fmt --check
+
+  clippy:
+    name: Run Linter
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Setup Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Linter (Clippy)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Compile Code
+        run: cargo build --verbose
+
+      - name: Run Tests
+        run: cargo test --verbose
+
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Scan Dependencies for Known Vulnerabilities
+        run: cargo audit

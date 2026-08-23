@@ -21,7 +21,7 @@ impl HttpError {
 
             HttpError::ServiceUnavailable =>
                 b"HTTP/1.1 503 Service Unavailable\r\nContent-Length:19\r\n\r\nService Unavailable",
-                
+
             HttpError::Internal =>
                 b"HTTP/1.1 500 Internal Server Error\r\nContent-Length:21\r\n\r\nInternal Server Error",
         }

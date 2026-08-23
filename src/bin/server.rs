@@ -1,17 +1,10 @@
 use bytes::BytesMut;
-use std::sync::{
-    atomic::AtomicUsize,
-    Arc,
-};
-use tokio::{
-    io::AsyncWriteExt,
-    net::TcpListener,
-};
+use std::sync::{Arc, atomic::AtomicUsize};
+use tokio::{io::AsyncWriteExt, net::TcpListener};
 
 use ferrux::{
-    BackendPool, BufferPool, Config,
-    get_addr_from_config, load_backends, pick_backend, process,
-    spawn_health_checker, get_valid_backends,
+    BackendPool, BufferPool, Config, get_addr_from_config, get_valid_backends, load_backends,
+    pick_backend, process, spawn_health_checker,
 };
 
 #[tokio::main]

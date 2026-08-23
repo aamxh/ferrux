@@ -24,12 +24,10 @@ pub async fn process(
         }
     };
 
-    if !initial_data.is_empty() {
-        if upstream.write_all(&initial_data).await.is_err() {
-            eprintln!("Failed to send initial data to upstream");
-            socket.write_all(HttpError::Internal.response()).await.ok();
-            return (buf1, buf2);
-        }
+    if !initial_data.is_empty() && upstream.write_all(&initial_data).await.is_err() {
+        eprintln!("Failed to send initial data to upstream");
+        socket.write_all(HttpError::Internal.response()).await.ok();
+        return (buf1, buf2);
     }
 
     loop {

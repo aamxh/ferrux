@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::{
     net::SocketAddr,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 #[derive(Debug, Deserialize)]
@@ -39,9 +39,7 @@ pub struct Backend {
 }
 
 pub fn get_addr_from_config(address: &str, port: u16) -> SocketAddr {
-    format!("{}:{}", address, port)
-        .parse()
-        .unwrap()
+    format!("{}:{}", address, port).parse().unwrap()
 }
 
 pub fn load_backends(config: &Config) -> Vec<Backend> {
