@@ -1,0 +1,17 @@
+# Version control & CI
+.git
+.github
+.gitignore
+
+# Local build artifacts
+target/
+
+# Docs & tooling
+*.md
+
+# Docker itself
+Dockerfile
+.dockerignore
+
+# Examples are not part of the shipped image
+examples
