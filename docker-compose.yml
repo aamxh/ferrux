@@ -1,0 +1,60 @@
+# Demo/test stack: ferrux proxy + three dummy backends.
+#
+#   docker compose up -d --build     # start everything
+#   curl localhost:8080/api/anything # -> served by api-1 or api-2 (weighted 1:2)
+#   curl localhost:8080/static/x     # -> served by static-1
+#   curl localhost:8080/nope         # -> 404 (no backend matches)
+#   docker compose down              # stop and remove
+
+services:
+  proxy:
+    build: .
+    image: ferrux:local
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.docker.yaml:/etc/ferrux/config.yaml:ro
+    restart: unless-stopped
+    depends_on:
+      api-1:
+        condition: service_healthy
+      api-2:
+        condition: service_healthy
+      static-1:
+        condition: service_healthy
+
+  api-1:
+    image: python:3-alpine
+    volumes:
+      - ./examples/dummy_backend.py:/app/dummy_backend.py:ro
+    command: python /app/dummy_backend.py 9001
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9001')"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  api-2:
+    image: python:3-alpine
+    volumes:
+      - ./examples/dummy_backend.py:/app/dummy_backend.py:ro
+    command: python /app/dummy_backend.py 9003
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9003')"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  static-1:
+    image: python:3-alpine
+    volumes:
+      - ./examples/dummy_backend.py:/app/dummy_backend.py:ro
+    command: python /app/dummy_backend.py 9002
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9002')"]
+      interval: 2s
+      timeout: 2s
+      retries: 10

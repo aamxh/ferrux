@@ -1,0 +1,26 @@
+# Compose variant of config.yaml.
+# Differences from config.yaml:
+#   - backend addresses are compose service names (internal DNS)
+#   - listen address is 0.0.0.0 so the published port works from the host
+mode: "l7"
+
+backends:
+  - address: "api-1"
+    port: 9001
+    weight: 1
+    path: "/api"
+  - address: "static-1"
+    port: 9002
+    weight: 1
+    path: "/static"
+  - address: "api-2"
+    port: 9003
+    weight: 2
+    path: "/api"
+
+listen:
+  address: "0.0.0.0"
+  port: 8080
+
+buffer_pool_size: 20
+buffer_size: 8192

@@ -12,4 +12,4 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         print(f"[{port}] hit from {self.client_address}")
 
-HTTPServer(('127.0.0.1', port), Handler).serve_forever()
+HTTPServer(('0.0.0.0', port), Handler).serve_forever()

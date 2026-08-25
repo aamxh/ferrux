@@ -38,8 +38,18 @@ pub struct Backend {
     pub healthy: Arc<AtomicBool>,
 }
 
+/// Resolve a configured address to a [`SocketAddr`].
+///
+/// Accepts IP literals (`127.0.0.1`) as well as hostnames that can be
+/// resolved via the system resolver (e.g. `localhost`, Docker service
+/// names, or DNS entries). Returns the first resolved address.
 pub fn get_addr_from_config(address: &str, port: u16) -> SocketAddr {
-    format!("{}:{}", address, port).parse().unwrap()
+    use std::net::ToSocketAddrs;
+    (address, port)
+        .to_socket_addrs()
+        .expect("failed to resolve address")
+        .next()
+        .expect("address resolved to no sockets")
 }
 
 pub fn load_backends(config: &Config) -> Vec<Backend> {

@@ -9,6 +9,7 @@ cargo build                        # build library + binary
 cargo run --bin server              # starts server (reads config.yaml)
 cargo run --example client          # connect to running server
 cargo build --release               # optimized build
+docker compose up -d --build        # full demo stack: proxy + 3 dummy backends
 ```
 
 No tests, lints, or CI configured yet.

@@ -60,6 +60,51 @@ cargo run --bin server
 curl http://127.0.0.1:8080/api/hello
 ```
 
+## Docker
+
+Build the image:
+
+```sh
+docker build -t ferrux .
+```
+
+Run it, mounting your own config over the default baked into the image:
+
+```sh
+docker run -d --name ferrux \
+  -p 8080:8080 \
+  -v "$(pwd)/config.yaml:/etc/ferrux/config.yaml:ro" \
+  ferrux
+```
+
+Notes:
+
+- The container runs as an unprivileged user and reads its config from `/etc/ferrux/config.yaml`.
+- Only the listener port needs publishing; connections to backends are outbound and require no extra ports.
+- Backend addresses may be hostnames (e.g. `localhost`, Docker/k8s service names), resolved via the system resolver.
+
+### Demo stack
+
+A self-contained demo stands up the proxy plus three dummy HTTP backends on a private network:
+
+```sh
+docker compose up -d --build
+```
+
+Then try it:
+
+```sh
+curl localhost:8080/api/hello   # -> api-1 or api-2 (weighted round-robin, 1:2)
+curl localhost:8080/static/app.js  # -> static-1
+curl localhost:8080/nope        # -> 404 (no matching backend)
+```
+
+The backends are not published to the host. The proxy reaches them by service name (`api-1`, `api-2`, `static-1`) through `config.docker.yaml`, mirroring how the proxy would be wired up in a real deployment. Tear it down when done:
+
+```sh
+docker compose down
+```
+
 ## Configuration
 
 | Field | Type | Default | Description |
@@ -68,7 +113,7 @@ curl http://127.0.0.1:8080/api/hello
 | `listen.address` | `string` | — | Bind address |
 | `listen.port` | `u16` | — | Bind port |
 | `backends` | `array` | — | List of upstream servers |
-| `backends[].address` | `string` | — | Backend address |
+| `backends[].address` | `string` | — | Backend IP address or resolvable hostname |
 | `backends[].port` | `u16` | — | Backend port |
 | `backends[].path` | `string` | `"/"` | URL prefix to route to this backend |
 | `backends[].weight` | `usize` | `1` | Relative weight for load balancing |
